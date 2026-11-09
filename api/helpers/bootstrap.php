@@ -25,7 +25,7 @@ $allowedOrigins = [
     'http://127.0.0.1:3000',
 ];
 
-if (in_array($origin, $allowedOrigins, true) || (preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#', $origin) === 1)) {
+if (in_array($origin, $allowedOrigins, true) || (preg_match('#^https?://([a-zA-Z0-9-]+\.trycloudflare\.com|localhost|127\.0\.0\.1)(:\d+)?$#', $origin) === 1)) {
     header("Access-Control-Allow-Origin: {$origin}");
     header('Access-Control-Allow-Credentials: true');
 }

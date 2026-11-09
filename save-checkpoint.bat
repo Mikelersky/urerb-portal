@@ -56,3 +56,4 @@ echo   To roll back anytime, run: restore-checkpoint.bat
 echo =======================================================
 echo.
 pause
+
