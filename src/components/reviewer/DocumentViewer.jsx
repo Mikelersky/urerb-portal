@@ -4,7 +4,7 @@ export default function DocumentViewer({
   protocol,
   activeDoc,
   currentPage = 1,
-  totalPages = 3,
+  totalPages,
   onPageChange,
   isLocked = false,
 }) {
@@ -29,7 +29,7 @@ export default function DocumentViewer({
   };
 
   const handleNext = () => {
-    const newPage = Math.min(totalPages, page + 1);
+    const newPage = totalPages ? Math.min(totalPages, page + 1) : page + 1;
     if (onPageChange) onPageChange(newPage);
     else setInternalPage(newPage);
   };
@@ -89,16 +89,38 @@ export default function DocumentViewer({
               onClick={handlePrev}
               disabled={page <= 1}
               className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white rounded disabled:opacity-30 transition-colors cursor-pointer"
+              title="Previous Page"
             >
               ← Prev
             </button>
-            <span className="font-semibold text-slate-800 px-2 text-xs">
-              Page {page} of {totalPages}
-            </span>
+            {totalPages ? (
+              <span className="font-semibold text-slate-800 px-2 text-xs">
+                Page {page} of {totalPages}
+              </span>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2">
+                <span className="text-slate-500 font-medium text-xs">Page</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={page}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1) {
+                      if (onPageChange) onPageChange(val);
+                      else setInternalPage(val);
+                    }
+                  }}
+                  className="w-12 text-center text-xs font-bold text-slate-900 bg-white border border-slate-200 rounded py-0.5 focus:outline-none focus:border-[#1e513b] focus:ring-1 focus:ring-[#1e513b]"
+                  title="Jump to Page"
+                />
+              </div>
+            )}
             <button
               onClick={handleNext}
-              disabled={page >= totalPages}
+              disabled={totalPages ? page >= totalPages : false}
               className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white rounded disabled:opacity-30 transition-colors cursor-pointer"
+              title="Next Page"
             >
               Next →
             </button>
@@ -165,7 +187,8 @@ export default function DocumentViewer({
               className="w-full h-[580px] bg-white rounded shadow border border-slate-300 overflow-hidden transition-transform duration-150"
             >
               <iframe
-                src={fileUrl}
+                key={`${fileUrl}-${page}`}
+                src={`${fileUrl}#page=${page}`}
                 title={activeDoc?.name || 'Protocol PDF Preview'}
                 className="w-full h-full border-0"
               />

@@ -118,7 +118,7 @@ export default function ReviewWorkspace() {
         f.id === editingFindingId
           ? {
               ...f,
-              page: parseInt(inputPage, 10) || 1,
+              page: parseInt(inputPage, 10) || docPage || 1,
               section: inputSection,
               content: inputFinding,
             }
@@ -130,7 +130,7 @@ export default function ReviewWorkspace() {
     } else {
       const newFinding = {
         id: `f-${Date.now()}`,
-        page: parseInt(inputPage, 10) || 1,
+        page: parseInt(inputPage, 10) || docPage || 1,
         section: inputSection,
         sectionCode: inputSection.split('—')[0].trim(),
         content: inputFinding,
@@ -402,7 +402,7 @@ export default function ReviewWorkspace() {
               protocol={currentProtocol}
               activeDoc={activeDoc}
               currentPage={docPage}
-              totalPages={3}
+              totalPages={activeDoc?.fileUrl ? null : 3}
               onPageChange={setDocPage}
               isLocked={isLocked}
             />
@@ -474,9 +474,9 @@ export default function ReviewWorkspace() {
                       <input
                         type="number"
                         min="1"
-                        max="10"
                         value={inputPage}
                         onChange={(e) => setInputPage(e.target.value)}
+                        placeholder="e.g. 1"
                         className="w-full px-3 py-2 bg-[#f0f4fd]/50 border border-slate-200 rounded-lg text-xs font-mono font-medium focus:outline-none focus:ring-1 focus:ring-[#1e513b]"
                         required
                       />
