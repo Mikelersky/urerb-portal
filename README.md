@@ -71,7 +71,7 @@ Ensure `C:\xampp\htdocs\urerb-api\uploads\` is writable by the web server.
 ### 4. Frontend Setup
 1. Clone the repository and navigate into the project directory:
    ```bash
-   git clone https://github.com/DrieQ23/urerb-portal.git
+   git clone https://github.com/Mikelersky/urerb-portal.git
    cd urerb-portal
    ```
 2. Install dependencies:
