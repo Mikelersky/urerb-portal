@@ -31,10 +31,12 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
-# Scratch and Temporary directories
+# Scratch, Backups, and Temporary directories
 scratch/
+backups/
 tempmediaStorage/
 *.tmp
+*.bak
 
 # Uploaded protocol files in backend (preserve structure & access control)
 api/uploads/*
