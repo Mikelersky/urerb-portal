@@ -103,3 +103,4 @@ Share the URL with your collaborator and verify:
 | **"Blocked request: Host is not in allowedHosts"** | Missing host header flag | Ensure you launch the tunnel with `--http-host-header localhost`. |
 | **Tunnel URL shows "502 Bad Gateway"** | Vite dev server is not running | Run `npm run dev` in your project folder before starting the tunnel. |
 | **`cloudflared` command not recognized** | Path not loaded in current terminal | Use `& "C:\Program Files (x86)\cloudflared\cloudflared.exe"` or open a fresh terminal window. |
+

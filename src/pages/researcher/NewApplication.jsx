@@ -92,6 +92,10 @@ export default function NewApplication() {
   const [draftId, setDraftId] = useState(
     () => location.state?.protocolId || (searchParams.get('id') ? Number(searchParams.get('id')) || null : null)
   );
+  const draftIdRef = useRef(draftId);
+  useEffect(() => {
+    draftIdRef.current = draftId;
+  }, [draftId]);
   const [lastSavedTime, setLastSavedTime] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -253,14 +257,16 @@ export default function NewApplication() {
   };
 
   const handleSaveDraft = async (stepToPersist = activeStep) => {
+    if (isSaving) return draftIdRef.current || draftId;
     setIsSaving(true);
     setSaveStatus('Saving draft...');
     try {
       const activeVulnerable = Object.keys(formData.vulnerableGroups).filter(
         (k) => formData.vulnerableGroups[k]
       );
+      const currentId = draftIdRef.current || draftId;
       const payload = {
-        id: draftId,
+        id: currentId,
         title: formData.title || 'Untitled Research Protocol',
         reviewTrack: formData.reviewCategory,
         reviewType: formData.reviewCategory,
@@ -282,8 +288,13 @@ export default function NewApplication() {
       };
 
       const res = await protocolsApi.saveDraft(payload);
-      if (res && res.success && res.protocolId) {
-        setDraftId(res.protocolId);
+      const resolvedId = res?.protocolId || res?.protocol?.id || res?.id || currentId;
+      if (res && res.success && resolvedId) {
+        setDraftId(resolvedId);
+        draftIdRef.current = resolvedId;
+        if (!searchParams.get('id') || searchParams.get('id') !== String(resolvedId)) {
+          window.history.replaceState(null, '', `?id=${resolvedId}&mode=draft`);
+        }
         const timeNow = new Date().toLocaleTimeString('en-US', {
           hour: '2-digit',
           minute: '2-digit',
@@ -291,14 +302,15 @@ export default function NewApplication() {
         setLastSavedTime(timeNow);
         setSaveStatus(`Draft saved (${timeNow})`);
         setIsSaving(false);
-        return res.protocolId;
+        return resolvedId;
       }
     } catch (err) {
       console.error('Save draft failed:', err);
       setSaveStatus('Error saving draft');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
-    return draftId;
+    return draftIdRef.current || draftId;
   };
 
   const triggerFilePicker = (docKey) => {
@@ -313,18 +325,25 @@ export default function NewApplication() {
     const file = e.target.files?.[0];
     if (!file || !activeUploadKey) return;
 
-    let targetDraftId = draftId;
     setSaveStatus(`Uploading ${file.name}...`);
     try {
+      let targetDraftId = draftIdRef.current || draftId;
+      // Auto-save form draft silently if none exists yet, so nothing is lost
       if (!targetDraftId) {
         targetDraftId = await handleSaveDraft(3);
       }
-      if (!targetDraftId) {
-        throw new Error('Please save the draft details before uploading documents.');
-      }
 
-      const res = await protocolsApi.uploadDoc(targetDraftId, activeUploadKey, file);
+      // Upload file directly (backend will also auto-resolve or create draft if 0)
+      const res = await protocolsApi.uploadDoc(targetDraftId || 0, activeUploadKey, file);
       if (res && res.success && res.document) {
+        const resolvedId = res.protocolId || targetDraftId;
+        if (resolvedId) {
+          setDraftId(resolvedId);
+          draftIdRef.current = resolvedId;
+          if (!searchParams.get('id') || searchParams.get('id') !== String(resolvedId)) {
+            window.history.replaceState(null, '', `?id=${resolvedId}&mode=draft`);
+          }
+        }
         const doc = res.document;
         setDocuments((prev) => ({
           ...prev,
@@ -1467,8 +1486,8 @@ export default function NewApplication() {
             {activeStep === 1 && (
               <button
                 type="button"
-                onClick={() => {
-                  handleSaveDraft(2);
+                onClick={async () => {
+                  await handleSaveDraft(2);
                   setActiveStep(2);
                 }}
                 className="inline-flex items-center px-6 py-2.5 bg-[#1e513b] hover:bg-[#163f2e] text-white text-xs font-bold rounded-md shadow-xs transition-colors cursor-pointer"
@@ -1481,8 +1500,8 @@ export default function NewApplication() {
             {activeStep === 2 && (
               <button
                 type="button"
-                onClick={() => {
-                  handleSaveDraft(3);
+                onClick={async () => {
+                  await handleSaveDraft(3);
                   setActiveStep(3);
                 }}
                 className="inline-flex items-center px-6 py-2.5 bg-[#1e513b] hover:bg-[#163f2e] text-white text-xs font-bold rounded-md shadow-xs transition-colors cursor-pointer"

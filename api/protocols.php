@@ -36,6 +36,30 @@ function cleanNature(string $val): string
     return 'other';
 }
 
+// Helper to ensure baseline 7 document slots exist for a protocol
+function ensureDocumentSlots(PDO $pdo, int $protocolId): void
+{
+    $docDefinitions = [
+        'form15'     => ['title' => 'Form 15 — Application for Protocol Ethics Review', 'required' => 1],
+        'form16'     => ['title' => 'Form 16 — Informed Consent Form (ICF) & Assent Forms', 'required' => 1],
+        'form17'     => ['title' => 'Form 17 — Study Protocol & Data Gathering Instruments', 'required' => 1],
+        'form13'     => ['title' => 'Form 13 — Curriculum Vitae & GCP Training Certificate', 'required' => 1],
+        'form14'     => ['title' => 'Form 14 — Department Ethics Endorsement Sheet', 'required' => 1],
+        'supporting' => ['title' => 'Supporting Documents (Permissions, MoU, IRB Clearances)', 'required' => 0],
+        'receipt'    => ['title' => 'Official Cashier Payment Receipt', 'required' => 1],
+    ];
+
+    $checkDoc = $pdo->prepare('SELECT `id` FROM `protocol_documents` WHERE `protocol_id` = ? AND `document_key` = ? LIMIT 1');
+    $insertDoc = $pdo->prepare('INSERT INTO `protocol_documents` (`protocol_id`, `document_key`, `title`, `is_required`, `status`) VALUES (?, ?, ?, ?, "Missing")');
+
+    foreach ($docDefinitions as $key => $meta) {
+        $checkDoc->execute([$protocolId, $key]);
+        if (!$checkDoc->fetchColumn()) {
+            $insertDoc->execute([$protocolId, $key, $meta['title'], $meta['required']]);
+        }
+    }
+}
+
 switch ($action) {
     case 'list':
         $stmt = $pdo->prepare('SELECT * FROM `protocols` WHERE `primary_investigator_id` = ? ORDER BY `id` DESC');
@@ -122,6 +146,17 @@ switch ($action) {
 
         $body = getJsonBody();
         $draftId = !empty($body['id']) ? (int)$body['id'] : 0;
+
+        // If no draft ID is explicitly provided, look up any existing active Draft for this researcher
+        // to prevent creating duplicate multiple drafts on every save or step transition.
+        if ($draftId <= 0) {
+            $findDraft = $pdo->prepare("SELECT `id` FROM `protocols` WHERE `primary_investigator_id` = ? AND `status` = 'Draft' ORDER BY `id` DESC LIMIT 1");
+            $findDraft->execute([(int)$user['id']]);
+            $existingDraftId = (int)$findDraft->fetchColumn();
+            if ($existingDraftId > 0) {
+                $draftId = $existingDraftId;
+            }
+        }
 
         $title = trim((string)($body['title'] ?? 'Untitled Research Protocol'));
         $track = cleanTrack((string)($body['reviewType'] ?? $body['reviewTrack'] ?? 'Expedited Review'));
@@ -228,25 +263,7 @@ switch ($action) {
             }
 
             // Ensure baseline 7 document slots exist
-            $docDefinitions = [
-                'form15'     => ['title' => 'Form 15 — Application for Protocol Ethics Review', 'required' => 1],
-                'form16'     => ['title' => 'Form 16 — Informed Consent Form (ICF) & Assent Forms', 'required' => 1],
-                'form17'     => ['title' => 'Form 17 — Study Protocol & Data Gathering Instruments', 'required' => 1],
-                'form13'     => ['title' => 'Form 13 — Curriculum Vitae & GCP Training Certificate', 'required' => 1],
-                'form14'     => ['title' => 'Form 14 — Department Ethics Endorsement Sheet', 'required' => 1],
-                'supporting' => ['title' => 'Supporting Documents (Permissions, MoU, IRB Clearances)', 'required' => 0],
-                'receipt'    => ['title' => 'Official Cashier Payment Receipt', 'required' => 1],
-            ];
-
-            $checkDoc = $pdo->prepare('SELECT `id` FROM `protocol_documents` WHERE `protocol_id` = ? AND `document_key` = ? LIMIT 1');
-            $insertDoc = $pdo->prepare('INSERT INTO `protocol_documents` (`protocol_id`, `document_key`, `title`, `is_required`, `status`) VALUES (?, ?, ?, ?, "Missing")');
-
-            foreach ($docDefinitions as $key => $meta) {
-                $checkDoc->execute([$draftId, $key]);
-                if (!$checkDoc->fetchColumn()) {
-                    $insertDoc->execute([$draftId, $key, $meta['title'], $meta['required']]);
-                }
-            }
+            ensureDocumentSlots($pdo, $draftId);
 
             $pdo->commit();
 
@@ -255,8 +272,10 @@ switch ($action) {
             $saved = $fetchStmt->fetch();
 
             sendJson([
-                'success'  => true,
-                'protocol' => formatProtocolForResearcher($pdo, $saved),
+                'success'    => true,
+                'protocolId' => $draftId,
+                'id'         => $draftId,
+                'protocol'   => formatProtocolForResearcher($pdo, $saved),
             ]);
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -277,8 +296,19 @@ switch ($action) {
             sendError('Invalid document key specified.', 400);
         }
 
+        // If protocolId is missing or 0, automatically find or create an active Draft protocol!
+        // The researcher never has to manually save a draft first before uploading.
         if ($protocolId <= 0) {
-            sendError('Protocol ID is required.', 400);
+            $findDraft = $pdo->prepare("SELECT `id` FROM `protocols` WHERE `primary_investigator_id` = ? AND `status` = 'Draft' ORDER BY `id` DESC LIMIT 1");
+            $findDraft->execute([(int)$user['id']]);
+            $protocolId = (int)$findDraft->fetchColumn();
+
+            if ($protocolId <= 0) {
+                $ins = $pdo->prepare('INSERT INTO `protocols` (`primary_investigator_id`, `title`, `review_track`, `academic_year`, `active_step`, `status`, `status_category`) VALUES (?, "Untitled Research Protocol", "Expedited Review", ?, 3, "Draft", "draft")');
+                $ins->execute([(int)$user['id'], getAcademicYear()]);
+                $protocolId = (int)$pdo->lastInsertId();
+                ensureDocumentSlots($pdo, $protocolId);
+            }
         }
 
         // Check protocol ownership and state
@@ -376,9 +406,11 @@ switch ($action) {
         $docRow = $fresh->fetch();
 
         sendJson([
-            'success'  => true,
-            'message'  => 'Document uploaded successfully.',
-            'document' => formatDocumentRow($docRow, $proto['protocol_code']),
+            'success'    => true,
+            'protocolId' => $protocolId,
+            'id'         => $protocolId,
+            'message'    => 'Document uploaded successfully.',
+            'document'   => formatDocumentRow($docRow, $proto['protocol_code'] ?? null),
         ]);
         break;
 
