@@ -207,13 +207,13 @@ export default function NewApplication() {
             setDocuments((prev) => {
               const updated = { ...prev };
               d.documents.forEach((serverDoc) => {
-                const key = serverDoc.documentKey;
-                if (updated[key]) {
+                const key = serverDoc.documentKey || serverDoc.key;
+                if (key && updated[key]) {
                   updated[key] = {
                     ...updated[key],
                     uploaded: serverDoc.status !== 'Missing' && Boolean(serverDoc.fileName),
                     fileName: serverDoc.fileName,
-                    fileSize: serverDoc.fileSizeFormatted || serverDoc.fileSize,
+                    fileSize: serverDoc.fileSizeFormatted || serverDoc.fileSize || serverDoc.size || '—',
                     fileUrl: serverDoc.fileUrl,
                     downloadUrl: serverDoc.downloadUrl,
                     version: serverDoc.version || 'v1.0',

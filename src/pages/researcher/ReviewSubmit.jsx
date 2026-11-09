@@ -104,16 +104,22 @@ export default function ReviewSubmit() {
   const [coInvestigators, setCoInvestigators] = useState(stateData?.coInvestigators || []);
 
   const [documentItems, setDocumentItems] = useState(() => {
-    const rawDocs = stateData?.documents || {};
+    const rawDocs = stateData?.documents;
     return FORM_DEFINITIONS.map((def) => {
-      const entry = rawDocs[def.key] || {};
+      let entry = null;
+      if (Array.isArray(rawDocs)) {
+        entry = rawDocs.find((d) => (d.documentKey || d.key) === def.key);
+      } else if (rawDocs && typeof rawDocs === 'object') {
+        entry = rawDocs[def.key];
+      }
+      const isUploaded = Boolean(entry && (entry.uploaded || (entry.status !== 'Missing' && entry.fileName)));
       return {
         ...def,
-        uploaded: Boolean(entry.uploaded),
-        fileName: entry.fileName || 'No file attached',
-        fileSize: entry.fileSize || '—',
-        fileUrl: entry.fileUrl || null,
-        downloadUrl: entry.downloadUrl || null,
+        uploaded: isUploaded,
+        fileName: entry?.fileName || 'No file attached',
+        fileSize: entry?.fileSizeFormatted || entry?.fileSize || entry?.size || '—',
+        fileUrl: entry?.fileUrl || null,
+        downloadUrl: entry?.downloadUrl || null,
       };
     });
   });
@@ -160,12 +166,13 @@ export default function ReviewSubmit() {
         if (Array.isArray(p.documents)) {
           setDocumentItems(
             FORM_DEFINITIONS.map((def) => {
-              const match = p.documents.find((d) => d.documentKey === def.key);
+              const match = p.documents.find((d) => (d.documentKey || d.key) === def.key);
+              const isUploaded = Boolean(match && match.status !== 'Missing' && match.fileName);
               return {
                 ...def,
-                uploaded: Boolean(match && match.status !== 'Missing' && match.fileName),
+                uploaded: isUploaded,
                 fileName: match?.fileName || 'No file attached',
-                fileSize: match?.fileSizeFormatted || match?.fileSize || '—',
+                fileSize: match?.fileSizeFormatted || match?.fileSize || match?.size || '—',
                 fileUrl: match?.fileUrl || null,
                 downloadUrl: match?.downloadUrl || null,
               };
@@ -548,8 +555,12 @@ export default function ReviewSubmit() {
                             title: doc.title,
                             version: 'v1.0',
                             name: doc.fileName,
+                            fileName: doc.fileName,
                             fileSize: doc.fileSize,
+                            size: doc.fileSize,
                             description: doc.description,
+                            fileUrl: doc.fileUrl,
+                            downloadUrl: doc.downloadUrl,
                           })
                         }
                         className="text-slate-600 hover:text-[#1e513b] font-medium px-2 py-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
@@ -564,7 +575,17 @@ export default function ReviewSubmit() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => navigate(ROUTES.RESEARCHER.NEW_APPLICATION)}
+                        onClick={() =>
+                          navigate(
+                            `${ROUTES.RESEARCHER.NEW_APPLICATION}?id=${activeProtocolId || ''}&mode=draft`,
+                            {
+                              state: {
+                                protocolId: activeProtocolId,
+                                returnStep: 3,
+                              },
+                            }
+                          )
+                        }
                         className="text-[#1e513b] hover:underline font-semibold px-2 py-1 rounded hover:bg-slate-100 transition-colors cursor-pointer"
                       >
                         Upload
