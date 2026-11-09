@@ -221,6 +221,7 @@ export default function ApplicationsManagement() {
               className="px-3.5 py-2 bg-[#f4f6fb] border border-slate-200/80 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:border-[#14432f] cursor-pointer min-w-[200px]"
             >
               <option value="All">College / Unit: All</option>
+              <option value="CCIS">College of Computing and Information Sciences (CCIS)</option>
               <option value="CAS">College of Arts and Sciences (CAS)</option>
               <option value="CBEA">College of Business, Economics and Accountancy (CBEA)</option>
               <option value="CTE">College of Teacher Education (CTE)</option>

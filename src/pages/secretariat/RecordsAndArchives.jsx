@@ -244,11 +244,15 @@ const RecordsAndArchives = () => {
             className="px-3 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs font-medium text-[#334155] focus:outline-none focus:border-[#14532D]"
           >
             <option value="All">All Colleges / Units</option>
+            <option value="CCIS">College of Computing &amp; Information Sciences (CCIS)</option>
             <option value="CAS">College of Arts &amp; Sciences (CAS)</option>
             <option value="CHS">College of Health Sciences (CHS)</option>
             <option value="CAFSD">College of Agriculture, Food &amp; Sustainable Dev. (CAFSD)</option>
             <option value="COM">College of Medicine (COM)</option>
             <option value="COE">College of Engineering (COE)</option>
+            <option value="CIT">College of Industrial Technology (CIT)</option>
+            <option value="CBEA">College of Business, Economics &amp; Accountancy (CBEA)</option>
+            <option value="CTE">College of Teacher Education (CTE)</option>
           </select>
 
           {/* All Review Types */}

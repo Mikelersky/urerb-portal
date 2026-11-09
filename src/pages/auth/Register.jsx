@@ -12,12 +12,16 @@ const CATEGORY_LABELS = {
 };
 
 const ACADEMIC_UNIT_LABELS = {
+  ccis: 'College of Computing and Information Sciences (CCIS)',
   cafsd: 'College of Agriculture, Food and Sustainable Development (CAFSD)',
   cas: 'College of Arts and Sciences (CAS)',
   cbae: 'College of Business, Accountancy and Economics (CBAE)',
   coe: 'College of Engineering (COE)',
   chs: 'College of Health Sciences (CHS)',
   cte: 'College of Teacher Education (CTE)',
+  cit: 'College of Industrial Technology (CIT)',
+  com: 'College of Medicine (COM)',
+  col: 'College of Law (COL)',
   gs: 'Graduate School',
   external: 'External / Other Affiliate',
 };
@@ -193,12 +197,16 @@ export default function Register() {
                     <option value="" disabled>
                       Select College / Unit
                     </option>
+                    <option value="ccis">College of Computing and Information Sciences (CCIS)</option>
                     <option value="cafsd">College of Agriculture, Food and Sustainable Development (CAFSD)</option>
                     <option value="cas">College of Arts and Sciences (CAS)</option>
                     <option value="cbae">College of Business, Accountancy and Economics (CBAE)</option>
                     <option value="coe">College of Engineering (COE)</option>
                     <option value="chs">College of Health Sciences (CHS)</option>
                     <option value="cte">College of Teacher Education (CTE)</option>
+                    <option value="cit">College of Industrial Technology (CIT)</option>
+                    <option value="com">College of Medicine (COM)</option>
+                    <option value="col">College of Law (COL)</option>
                     <option value="gs">Graduate School</option>
                     <option value="external">External / Other Affiliate</option>
                   </select>

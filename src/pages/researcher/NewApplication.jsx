@@ -673,6 +673,15 @@ export default function NewApplication() {
                     onChange={handleChange}
                     className="w-full text-sm font-medium border border-slate-200 rounded-md shadow-xs p-2.5 focus:border-[#1e513b] focus:ring-1 focus:ring-[#1e513b] text-slate-900 bg-white"
                   >
+                    <option value="College of Computing and Information Sciences (CCIS)">
+                      College of Computing and Information Sciences (CCIS)
+                    </option>
+                    <option value="College of Computing and Information Sciences (CCIS) - Department of Computer Science">
+                      College of Computing and Information Sciences (CCIS) - Department of Computer Science
+                    </option>
+                    <option value="College of Computing and Information Sciences (CCIS) - Department of Information Technology">
+                      College of Computing and Information Sciences (CCIS) - Department of Information Technology
+                    </option>
                     <option value="College of Arts and Sciences (CAS) - Department of Biological Sciences">
                       College of Arts and Sciences (CAS) - Department of Biological Sciences
                     </option>
