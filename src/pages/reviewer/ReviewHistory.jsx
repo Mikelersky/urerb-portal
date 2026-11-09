@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReviewerLayout from '../../layouts/ReviewerLayout';
 import { reviewsApi } from '../../services/api';
+import { ROUTES } from '../../constants/routes';
 import ReviewDetailsModal from '../../components/reviewer/ReviewDetailsModal';
 
 export default function ReviewHistory() {
+  const navigate = useNavigate();
   const now = new Date();
   const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
   const currentAcademicYear = `AY ${startYear}-${startYear + 1}`;
@@ -307,11 +310,19 @@ export default function ReviewHistory() {
                         history
                       </span>
                       <div className="text-sm font-bold text-slate-800 mt-1">
-                        No archived reviews found
+                        No completed reviews in archive
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Completed protocol evaluations will be archived here once submitted.
+                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                        Evaluations reflect here once you finalize and submit them. Ongoing evaluations and saved drafts are located in your Assigned Applications workspace.
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => navigate(ROUTES.REVIEWER.ASSIGNED_APPLICATIONS)}
+                        className="mt-3.5 inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#1e513b] text-white text-xs font-semibold rounded-lg hover:bg-[#163f2e] transition-colors cursor-pointer shadow-xs"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">assignment</span>
+                        <span>Go to Assigned Applications</span>
+                      </button>
                     </td>
                   </tr>
                 )}
