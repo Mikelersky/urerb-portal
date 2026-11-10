@@ -9,6 +9,7 @@ export default function SubmitReviewModal({
   recommendedAction = '',
   justification = '',
   panel = 'Panel Review',
+  deficientDocs = [],
 }) {
   if (!isOpen || !protocol) return null;
 
@@ -80,6 +81,37 @@ export default function SubmitReviewModal({
               </span>
               <p className="text-slate-700 line-clamp-2 leading-relaxed">
                 {justification}
+              </p>
+            </div>
+          )}
+
+          {deficientDocs.length > 0 && (
+            <div className="p-3 bg-red-50/70 rounded-lg border border-red-200 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-red-900 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[15px] text-red-600">warning</span>
+                  Flagged Form Deficiencies ({deficientDocs.length}):
+                </span>
+                <span className="text-[10px] font-semibold text-red-700 bg-red-100 px-2 py-0.5 rounded">
+                  Requires PI Action
+                </span>
+              </div>
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                {deficientDocs.map((doc, i) => (
+                  <div key={doc.documentKey || doc.id || i} className="p-2 bg-white rounded border border-red-100 text-[11px]">
+                    <div className="font-bold text-slate-800">{doc.title}</div>
+                    <p className="text-slate-600 mt-0.5 line-clamp-2 italic">{doc.issueText || 'Specific correction requested.'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {deficientDocs.length === 0 && (recommendedAction === 'Minor Revisions' || recommendedAction === 'Major Revisions') && (
+            <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
+              <span className="material-symbols-outlined text-[16px] text-amber-600 shrink-0 mt-0.5">info</span>
+              <p className="text-[11px] leading-relaxed">
+                No specific forms flagged as deficient. General review remarks will be sent to the researcher.
               </p>
             </div>
           )}

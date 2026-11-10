@@ -30,6 +30,7 @@ export default function ReviewWorkspace() {
   const [overallComments, setOverallComments] = useState('');
   const [justification, setJustification] = useState('');
   const [recommendedAction, setRecommendedAction] = useState('');
+  const [docDeficiencies, setDocDeficiencies] = useState({});
 
   // Submission Modals & Status
   const [showSubmitModal, setShowSubmitModal] = useState(false);
@@ -63,6 +64,34 @@ export default function ReviewWorkspace() {
             setOverallComments(p.overallComments || p.evaluation?.overallComments || '');
             setJustification(p.justification || p.evaluation?.justification || '');
             setRecommendedAction(p.recommendedAction || p.evaluation?.recommendedAction || '');
+
+            // Initialize document deficiencies from draft or current document statuses
+            const initialDef = {};
+            if (Array.isArray(p.deficientDocs) && p.deficientDocs.length > 0) {
+              p.deficientDocs.forEach((d) => {
+                const key = d.documentKey || d.key || String(d.id);
+                if (key) {
+                  initialDef[key] = {
+                    flagged: d.flagged !== false,
+                    issueText: d.issueText || d.remarks || '',
+                  };
+                }
+              });
+            }
+            if (Array.isArray(p.documents)) {
+              p.documents.forEach((d) => {
+                const key = d.documentKey || d.key || String(d.id);
+                if (key && (d.status === 'Deficient' || d.issueText)) {
+                  if (!initialDef[key]) {
+                    initialDef[key] = {
+                      flagged: true,
+                      issueText: d.issueText || '',
+                    };
+                  }
+                }
+              });
+            }
+            setDocDeficiencies(initialDef);
           }
         }
       } catch (err) {
@@ -84,6 +113,25 @@ export default function ReviewWorkspace() {
     }, 3000);
   };
 
+  // Helper to compile flagged deficient documents payload
+  const getDeficientDocsPayload = (deficienciesMap = docDeficiencies) => {
+    if (!currentProtocol?.documents) return [];
+    return currentProtocol.documents
+      .filter((doc) => {
+        const key = doc.documentKey || doc.key || String(doc.id);
+        return Boolean(deficienciesMap[key]?.flagged);
+      })
+      .map((doc) => {
+        const key = doc.documentKey || doc.key || String(doc.id);
+        return {
+          id: doc.id,
+          documentKey: doc.documentKey || doc.key || `DOC_${doc.id}`,
+          title: doc.title || doc.name || `Document #${doc.id}`,
+          issueText: deficienciesMap[key]?.issueText || justification || overallComments,
+        };
+      });
+  };
+
   // Auto-persist draft helper via API
   const triggerAutoSave = async (updatedFields = {}) => {
     if (!currentProtocol || Boolean(currentProtocol.isSubmitted)) return;
@@ -93,18 +141,56 @@ export default function ReviewWorkspace() {
       const nextComments = updatedFields.overallComments ?? overallComments;
       const nextJustification = updatedFields.justification ?? justification;
       const nextAction = updatedFields.recommendedAction ?? recommendedAction;
+      const nextDeficiencies = updatedFields.docDeficiencies ?? docDeficiencies;
+      const deficientList = getDeficientDocsPayload(nextDeficiencies);
+
       await reviewsApi.saveDraft({
         protocolId: currentProtocol.id || currentProtocol.protocolId,
         findings: nextFindings,
         overallComments: nextComments,
         justification: nextJustification,
         recommendedAction: nextAction,
+        deficientDocs: deficientList,
       });
       setAutoSaveState('saved');
     } catch (err) {
       console.warn('Auto-save error:', err);
       setAutoSaveState('saved');
     }
+  };
+
+  // Deficiency toggle and remarks handlers
+  const handleToggleDeficiency = (docKey, docTitle = '') => {
+    if (isLocked) return;
+    setDocDeficiencies((prev) => {
+      const current = prev[docKey] || { flagged: false, issueText: '' };
+      const next = {
+        ...prev,
+        [docKey]: {
+          flagged: !current.flagged,
+          issueText: current.issueText,
+        },
+      };
+      triggerAutoSave({ docDeficiencies: next });
+      showToast(!current.flagged ? `Flagged "${docTitle}" as deficient` : `Removed deficiency flag from "${docTitle}"`);
+      return next;
+    });
+  };
+
+  const handleDeficiencyRemarkChange = (docKey, text) => {
+    if (isLocked) return;
+    setDocDeficiencies((prev) => {
+      const current = prev[docKey] || { flagged: true, issueText: '' };
+      const next = {
+        ...prev,
+        [docKey]: {
+          flagged: true,
+          issueText: text,
+        },
+      };
+      triggerAutoSave({ docDeficiencies: next });
+      return next;
+    });
   };
 
   // Add or Update Finding
@@ -182,12 +268,14 @@ export default function ReviewWorkspace() {
       return;
     }
     try {
+      const deficientList = getDeficientDocsPayload();
       await reviewsApi.submit({
         protocolId: currentProtocol.id || currentProtocol.protocolId,
         findings,
         overallComments,
         justification,
         recommendedAction,
+        deficientDocs: deficientList,
       });
       setCurrentProtocol((prev) => ({ ...prev, isSubmitted: true }));
       setShowSubmitModal(false);
@@ -347,50 +435,83 @@ export default function ReviewWorkspace() {
               <div className="space-y-2">
                 {currentProtocol?.documents?.map((doc, idx) => {
                   const isSelected = idx === activeDocIndex;
+                  const docKey = doc.documentKey || doc.key || String(doc.id);
+                  const isFlagged = Boolean(docDeficiencies[docKey]?.flagged);
+
                   return (
                     <div
                       key={doc.id}
                       className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-all ${
                         isSelected
                           ? 'border-[#1e513b] bg-[#eef9f3] shadow-xs'
+                          : isFlagged
+                          ? 'border-red-200 bg-red-50/40 hover:border-red-300'
                           : 'border-slate-200/90 bg-white hover:border-slate-300'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <span
                           className={`material-symbols-outlined text-[20px] shrink-0 ${
-                            isSelected ? 'text-[#1e513b]' : 'text-slate-400'
+                            isSelected ? 'text-[#1e513b]' : isFlagged ? 'text-red-500' : 'text-slate-400'
                           }`}
                         >
                           description
                         </span>
                         <div className="min-w-0">
-                          <h4
-                            className={`text-xs font-bold truncate ${
-                              isSelected ? 'text-[#1e513b]' : 'text-slate-800'
-                            }`}
-                          >
-                            {doc.name}
-                          </h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4
+                              className={`text-xs font-bold truncate ${
+                                isSelected ? 'text-[#1e513b]' : 'text-slate-800'
+                              }`}
+                            >
+                              {doc.name}
+                            </h4>
+                            {isFlagged && (
+                              <span className="text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.2 rounded shrink-0">
+                                Deficient
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-slate-500 font-medium">
                             {doc.subtext || `${doc.type} • ${doc.size}`}
                           </p>
                         </div>
                       </div>
 
-                      {/* Right View Button */}
-                      {!isSelected && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveDocIndex(idx);
-                            setDocPage(1);
-                          }}
-                          className="px-3 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-md shadow-2xs transition-colors shrink-0 cursor-pointer"
-                        >
-                          View
-                        </button>
-                      )}
+                      {/* Right View & Quick Flag Controls */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {!isLocked && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleDeficiency(docKey, doc.title || doc.name);
+                            }}
+                            className={`p-1.5 rounded-md border text-xs transition-colors cursor-pointer ${
+                              isFlagged
+                                ? 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'
+                                : 'bg-white text-slate-400 border-slate-200 hover:text-red-600 hover:bg-red-50'
+                            }`}
+                            title={isFlagged ? 'Remove deficiency flag' : 'Flag this document as deficient'}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              {isFlagged ? 'flag' : 'outlined_flag'}
+                            </span>
+                          </button>
+                        )}
+                        {!isSelected && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveDocIndex(idx);
+                              setDocPage(1);
+                            }}
+                            className="px-3 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-md shadow-2xs transition-colors shrink-0 cursor-pointer"
+                          >
+                            View
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -661,6 +782,165 @@ export default function ReviewWorkspace() {
                 </div>
               </div>
 
+              {/* Flag Document Deficiencies (Researcher Action Items) */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-amber-600">
+                      flag
+                    </span>
+                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                      Flag Document Deficiencies
+                    </label>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                      getDeficientDocsPayload().length > 0
+                        ? 'bg-red-50 text-red-700 border-red-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}
+                  >
+                    {getDeficientDocsPayload().length}{' '}
+                    {getDeficientDocsPayload().length === 1 ? 'Form Flagged' : 'Forms Flagged'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Mark specific submitted documents requiring revision or failing ethical criteria. Flagged forms will be directly highlighted on the researcher's portal with individual re-upload prompts.
+                </p>
+
+                {/* Document Cards */}
+                <div className="space-y-2.5">
+                  {currentProtocol?.documents?.map((doc) => {
+                    const docKey = doc.documentKey || doc.key || String(doc.id);
+                    const def = docDeficiencies[docKey] || { flagged: false, issueText: '' };
+                    const isFlagged = Boolean(def.flagged);
+
+                    return (
+                      <div
+                        key={docKey}
+                        className={`p-3 rounded-lg border transition-all ${
+                          isFlagged
+                            ? 'bg-red-50/50 border-red-300 shadow-2xs'
+                            : 'bg-slate-50/60 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Toggle Row */}
+                        <div className="flex items-start justify-between gap-2">
+                          <label className="flex items-start gap-2.5 cursor-pointer min-w-0 select-none">
+                            <input
+                              type="checkbox"
+                              checked={isFlagged}
+                              disabled={isLocked}
+                              onChange={() => handleToggleDeficiency(docKey, doc.title || doc.name)}
+                              className="mt-0.5 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-slate-900 leading-snug">
+                                  {doc.title || doc.name}
+                                </span>
+                                {doc.documentKey && (
+                                  <span className="text-[10px] font-mono font-semibold bg-white border border-slate-200 text-slate-600 px-1.5 py-0.2 rounded">
+                                    {doc.documentKey}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500">
+                                {doc.fileName || 'Attached document'} {doc.fileSize ? `(${doc.fileSize})` : ''}
+                              </p>
+                            </div>
+                          </label>
+
+                          {isFlagged ? (
+                            <span className="text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded shrink-0">
+                              Deficient
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                              Compliant
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Expandable Deficiency Remarks when Flagged */}
+                        {isFlagged && (
+                          <div className="mt-2.5 pt-2.5 border-t border-red-200/70 space-y-2">
+                            <div className="flex items-center justify-between gap-1 flex-wrap">
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-red-800">
+                                Specific Correction / Deficiency Remarks:
+                              </label>
+                              {findings.length > 0 && !isLocked && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const lastFinding = findings[findings.length - 1];
+                                    if (lastFinding) {
+                                      const note = `Page ${lastFinding.page} (${lastFinding.section}): ${lastFinding.content}`;
+                                      handleDeficiencyRemarkChange(
+                                        docKey,
+                                        def.issueText ? `${def.issueText}\n${note}` : note
+                                      );
+                                    }
+                                  }}
+                                  className="text-[10px] font-semibold text-[#1e513b] hover:underline flex items-center gap-0.5 cursor-pointer"
+                                  title="Paste the latest recorded finding into this form's remarks"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">
+                                    content_paste
+                                  </span>
+                                  Insert Latest Finding
+                                </button>
+                              )}
+                            </div>
+
+                            <textarea
+                              rows={2}
+                              value={def.issueText || ''}
+                              disabled={isLocked}
+                              onChange={(e) => handleDeficiencyRemarkChange(docKey, e.target.value)}
+                              placeholder="e.g., Missing supervisor signature on Section 4; clarify participant risk mitigation protocol on page 3..."
+                              className={`w-full p-2 bg-white border rounded text-xs leading-relaxed ${
+                                isLocked
+                                  ? 'bg-slate-50 text-slate-600 border-slate-200'
+                                  : 'border-red-200 focus:outline-none focus:ring-1 focus:ring-red-500'
+                              }`}
+                            />
+
+                            {/* Quick Suggestion Chips */}
+                            {!isLocked && (
+                              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                <span className="text-[10px] font-medium text-slate-400">Quick Tags:</span>
+                                {[
+                                  'Missing Signature',
+                                  'Incomplete Information',
+                                  'Clarify Participant Risks',
+                                  'Informed Consent Language',
+                                  'Methodology Details Needed',
+                                  'Data Privacy Safeguards',
+                                ].map((chip) => (
+                                  <button
+                                    key={chip}
+                                    type="button"
+                                    onClick={() => {
+                                      const currentText = def.issueText || '';
+                                      const nextText = currentText ? `${currentText}; ${chip}` : chip;
+                                      handleDeficiencyRemarkChange(docKey, nextText);
+                                    }}
+                                    className="text-[10px] font-medium bg-white hover:bg-red-100/60 border border-slate-200 hover:border-red-300 text-slate-700 hover:text-red-800 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                                  >
+                                    + {chip}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Justification for the Recommendation (Matches Screenshot 2) */}
               <div className="space-y-1.5 pt-2 border-t border-slate-100">
                 <div className="flex items-center justify-between">
@@ -744,6 +1024,7 @@ export default function ReviewWorkspace() {
         recommendedAction={recommendedAction}
         justification={justification}
         panel={currentProtocol?.panel || 'Panel Review'}
+        deficientDocs={getDeficientDocsPayload()}
       />
 
       {/* Success Modal */}

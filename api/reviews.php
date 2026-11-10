@@ -232,6 +232,15 @@ switch ($action) {
         $comments = trim((string)($body['overallComments'] ?? ''));
         $justification = trim((string)($body['justification'] ?? ''));
         $additional = trim((string)($body['additionalNotes'] ?? ''));
+        $deficientDocs = is_array($body['deficientDocs'] ?? null) ? $body['deficientDocs'] : [];
+
+        if (!empty($deficientDocs)) {
+            $additionalPayload = [
+                'notes'         => $additional,
+                'deficientDocs' => $deficientDocs,
+            ];
+            $additional = json_encode($additionalPayload, JSON_UNESCAPED_UNICODE);
+        }
 
         $pdo->beginTransaction();
         try {
@@ -322,6 +331,15 @@ switch ($action) {
         $comments = trim((string)($body['overallComments'] ?? ''));
         $justification = trim((string)($body['justification'] ?? ''));
         $additional = trim((string)($body['additionalNotes'] ?? ''));
+        $deficientDocs = is_array($body['deficientDocs'] ?? null) ? $body['deficientDocs'] : [];
+
+        if (!empty($deficientDocs)) {
+            $additionalPayload = [
+                'notes'         => $additional,
+                'deficientDocs' => $deficientDocs,
+            ];
+            $additional = json_encode($additionalPayload, JSON_UNESCAPED_UNICODE);
+        }
 
         if ($recommendedAction !== 'Approved' && $justification === '' && $comments === '') {
             sendError('Justification remarks are required for revision or disapproval recommendations.', 400);
@@ -374,6 +392,7 @@ switch ($action) {
             // Update protocol workflow according to recommendation
             if ($decisionType === 'approved') {
                 $pdo->prepare('UPDATE `protocols` SET `status` = "Ready for Clearance", `status_category` = "assigned", `stage_label` = "4. Recommended for Clearance", `active_step` = 4 WHERE `id` = ?')->execute([$protoId]);
+                $pdo->prepare('UPDATE `protocol_documents` SET `status` = "Verified", `issue_text` = NULL WHERE `protocol_id` = ?')->execute([$protoId]);
 
                 addTrailLog(
                     $pdo,
@@ -395,12 +414,52 @@ switch ($action) {
             } elseif ($decisionType === 'revision') {
                 $pdo->prepare('UPDATE `protocols` SET `status` = "Revision Required", `status_category` = "assigned", `stage_label` = "4. Revisions Required by Reviewer", `active_step` = 4, `remarks` = ?, `due_date` = DATE_ADD(CURDATE(), INTERVAL 14 DAY) WHERE `id` = ?')->execute([$justification ?: $comments, $protoId]);
 
+                $flaggedTitles = [];
+                $flaggedDocIds = [];
+
+                if (!empty($deficientDocs)) {
+                    $updDoc = $pdo->prepare('UPDATE `protocol_documents` SET `status` = "Deficient", `issue_text` = ? WHERE `protocol_id` = ? AND (`document_key` = ? OR `id` = ?)');
+                    foreach ($deficientDocs as $d) {
+                        $flagged = $d['flagged'] ?? true;
+                        if (!$flagged) {
+                            continue;
+                        }
+                        $key = trim((string)($d['documentKey'] ?? $d['key'] ?? ''));
+                        $docId = (int)($d['id'] ?? $d['documentId'] ?? 0);
+                        $issue = trim((string)($d['issueText'] ?? $d['remarks'] ?? $justification ?: $comments));
+                        if ($key !== '' || $docId > 0) {
+                            $updDoc->execute([$issue, $protoId, $key, $docId]);
+                            $flaggedTitles[] = trim((string)($d['title'] ?? strtoupper($key)));
+                            if ($docId > 0) {
+                                $flaggedDocIds[] = $docId;
+                            } else {
+                                $fId = $pdo->prepare('SELECT `id` FROM `protocol_documents` WHERE `protocol_id` = ? AND `document_key` = ? LIMIT 1');
+                                $fId->execute([$protoId, $key]);
+                                $foundId = (int)$fId->fetchColumn();
+                                if ($foundId > 0) {
+                                    $flaggedDocIds[] = $foundId;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!empty($flaggedDocIds)) {
+                        $inPlaceholders = implode(',', array_fill(0, count($flaggedDocIds), '?'));
+                        $updOthers = $pdo->prepare("UPDATE `protocol_documents` SET `status` = 'Verified', `issue_text` = NULL WHERE `protocol_id` = ? AND `id` NOT IN ($inPlaceholders)");
+                        $updOthers->execute(array_merge([$protoId], $flaggedDocIds));
+                    }
+                }
+
+                $noticeLog = !empty($flaggedTitles)
+                    ? sprintf("Reviewer %s recommended %s with deficiencies flagged on %d form(s) [%s]: %s", $user['full_name'], $recommendedAction, count($flaggedTitles), implode(', ', $flaggedTitles), ($justification ?: $comments))
+                    : "Reviewer {$user['full_name']} recommended {$recommendedAction}: " . ($justification ?: $comments);
+
                 addTrailLog(
                     $pdo,
                     $protoId,
                     (int)$user['id'],
                     'Deficiency Notice',
-                    "Reviewer {$user['full_name']} recommended {$recommendedAction}: " . ($justification ?: $comments)
+                    $noticeLog
                 );
 
                 createNotification(
@@ -408,7 +467,7 @@ switch ($action) {
                     $piId,
                     $protoId,
                     'Ethical / Technical Revisions Required',
-                    "The Reviewer Panel has requested revisions on Protocol {$protoCode}: " . ($justification ?: $comments),
+                    $noticeLog,
                     'revision',
                     'View & Revise'
                 );
@@ -418,7 +477,7 @@ switch ($action) {
                     'secretariat',
                     $protoId,
                     'Revisions Recommended by Reviewer',
-                    "Reviewer {$user['full_name']} recommended {$recommendedAction} for Protocol {$protoCode}.",
+                    "Reviewer {$user['full_name']} recommended {$recommendedAction} for Protocol {$protoCode}." . (!empty($flaggedTitles) ? " Deficiencies flagged: " . implode(', ', $flaggedTitles) . "." : ""),
                     'revision',
                     'Deliberation Queue'
                 );
@@ -426,12 +485,34 @@ switch ($action) {
                 // Disapproved
                 $pdo->prepare('UPDATE `protocols` SET `status` = "Disapproved", `status_category` = "completed", `stage_label` = "4. Disapproved", `active_step` = 4, `decision_date` = CURDATE(), `remarks` = ? WHERE `id` = ?')->execute([$justification ?: $comments, $protoId]);
 
+                $flaggedTitles = [];
+                if (!empty($deficientDocs)) {
+                    $updDoc = $pdo->prepare('UPDATE `protocol_documents` SET `status` = "Deficient", `issue_text` = ? WHERE `protocol_id` = ? AND (`document_key` = ? OR `id` = ?)');
+                    foreach ($deficientDocs as $d) {
+                        $flagged = $d['flagged'] ?? true;
+                        if (!$flagged) {
+                            continue;
+                        }
+                        $key = trim((string)($d['documentKey'] ?? $d['key'] ?? ''));
+                        $docId = (int)($d['id'] ?? $d['documentId'] ?? 0);
+                        $issue = trim((string)($d['issueText'] ?? $d['remarks'] ?? $justification ?: $comments));
+                        if ($key !== '' || $docId > 0) {
+                            $updDoc->execute([$issue, $protoId, $key, $docId]);
+                            $flaggedTitles[] = trim((string)($d['title'] ?? strtoupper($key)));
+                        }
+                    }
+                }
+
+                $noticeLog = !empty($flaggedTitles)
+                    ? sprintf("Reviewer %s recommended Disapproval for Protocol %s. Flagged non-compliant form(s) [%s]: %s", $user['full_name'], $protoCode, implode(', ', $flaggedTitles), ($justification ?: $comments))
+                    : "Reviewer recommended disapproval for Protocol {$protoCode}: " . ($justification ?: $comments);
+
                 addTrailLog(
                     $pdo,
                     $protoId,
                     (int)$user['id'],
                     'Panel Note',
-                    "Reviewer recommended disapproval for Protocol {$protoCode}: " . ($justification ?: $comments)
+                    $noticeLog
                 );
 
                 createNotification(
@@ -439,7 +520,7 @@ switch ($action) {
                     $piId,
                     $protoId,
                     'Protocol Evaluation Disposition: Disapproved',
-                    "URERB Review Panel has concluded deliberation for Protocol {$protoCode} with Disapproval. Check remarks for details.",
+                    "URERB Review Panel has concluded deliberation for Protocol {$protoCode} with Disapproval. " . ($justification ?: $comments),
                     'revision',
                     'Track Protocol'
                 );
@@ -449,7 +530,7 @@ switch ($action) {
                     'secretariat',
                     $protoId,
                     'Protocol Disapproval Recorded',
-                    "Protocol {$protoCode} was marked Disapproved by Reviewer {$user['full_name']}.",
+                    "Protocol {$protoCode} was marked Disapproved by Reviewer {$user['full_name']}." . (!empty($flaggedTitles) ? " Non-compliant form(s): " . implode(', ', $flaggedTitles) . "." : ""),
                     'update',
                     'Archives'
                 );

@@ -671,6 +671,18 @@ function formatProtocolForReviewer(PDO $pdo, array $p, array $assignment, ?array
 
     $isSubmitted = (bool)($evaluation['is_submitted'] ?? false);
 
+    $deficientDocs = [];
+    if (!empty($evaluation['additional_notes'])) {
+        $decoded = json_decode($evaluation['additional_notes'], true);
+        if (is_array($decoded)) {
+            if (isset($decoded['deficientDocs']) && is_array($decoded['deficientDocs'])) {
+                $deficientDocs = $decoded['deficientDocs'];
+            } else {
+                $deficientDocs = $decoded;
+            }
+        }
+    }
+
     return [
         'id'                => $id,
         'assignmentId'      => (int)$assignment['id'],
@@ -703,6 +715,7 @@ function formatProtocolForReviewer(PDO $pdo, array $p, array $assignment, ?array
         'coInvestigators'   => $coInvestigators,
         'targetPopulations' => $targetPopulations,
         'findings'          => $findings,
+        'deficientDocs'     => $deficientDocs,
         'overallComments'   => $evaluation['overall_comments'] ?? '',
         'justification'     => $evaluation['justification'] ?? '',
         'recommendedAction' => $evaluation['recommended_action'] ?? '',

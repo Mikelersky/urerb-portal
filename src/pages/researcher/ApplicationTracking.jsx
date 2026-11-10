@@ -67,7 +67,8 @@ export default function ApplicationTracking() {
       };
     });
 
-    const isRevision = raw.status === 'Revision Required' || raw.status === 'PI Clarification' || mappedDocs.some((d) => d.statusType === 'revision');
+    const isDisapproved = raw.status === 'Disapproved';
+    const isRevision = !isDisapproved && (raw.status === 'Revision Required' || raw.status === 'PI Clarification' || mappedDocs.some((d) => d.statusType === 'revision'));
 
     return {
       id: raw.id,
@@ -77,7 +78,7 @@ export default function ApplicationTracking() {
       pi: raw.piName || raw.pi || 'Principal Investigator',
       reviewType: raw.reviewTrack || raw.reviewType || 'Expedited Review',
       submittedDate: raw.dateSubmitted || '—',
-      activeStep: raw.activeStep || (raw.status === 'Draft' ? 1 : raw.status === 'Completed' ? 5 : 2),
+      activeStep: raw.activeStep || (raw.status === 'Draft' ? 1 : raw.status === 'Completed' || isDisapproved ? 5 : 2),
       stepStatus: raw.stageLabel || `Stage: ${raw.status || 'Submitted'}`,
       dueDate: raw.dueDate || '—',
       daysRemaining: raw.daysRemaining || (raw.dueDate ? 'In Progress' : '—'),
@@ -85,7 +86,7 @@ export default function ApplicationTracking() {
       verificationDate: raw.verificationDate || '',
       deliberationDate: raw.decisionDate || '',
       statusBadge: raw.status || 'Under Review',
-      statusType: isRevision ? 'revision' : (raw.status === 'Completed' || raw.status === 'Clearance Issued') ? 'approved' : 'review',
+      statusType: isDisapproved ? 'disapproved' : isRevision ? 'revision' : (raw.status === 'Completed' || raw.status === 'Clearance Issued') ? 'approved' : 'review',
       remarks: raw.remarks || 'Protocol queued in URERB review workflow.',
       reviewer: raw.reviewer || 'URERB Committee',
       documents: mappedDocs,
@@ -393,7 +394,12 @@ export default function ApplicationTracking() {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          {protocol.statusType === 'revision' && !isRevisionSubmitted ? (
+          {protocol.statusType === 'disapproved' ? (
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs bg-red-100 text-red-800 font-semibold border border-red-200 shadow-2xs">
+              <span className="material-symbols-outlined text-[16px] text-red-600">cancel</span>
+              Protocol Disapproved
+            </span>
+          ) : protocol.statusType === 'revision' && !isRevisionSubmitted ? (
             <>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs bg-red-100 text-red-700 font-semibold border border-red-200">
                 <span className="material-symbols-outlined text-[16px] text-red-600">warning</span>
@@ -540,7 +546,18 @@ export default function ApplicationTracking() {
 
             {/* Step 4 */}
             <div className="flex flex-col items-center text-center relative z-10 w-36">
-              {protocol.statusType === 'revision' && !isRevisionSubmitted ? (
+              {protocol.statusType === 'disapproved' ? (
+                <>
+                  <div className="w-9 h-9 rounded-full bg-red-100 text-red-700 flex items-center justify-center shadow-xs ring-4 ring-red-100/50">
+                    <span className="material-symbols-outlined text-[20px] text-red-600 font-bold">cancel</span>
+                  </div>
+                  <span className="text-xs font-bold text-red-700 mt-2 leading-tight">4. Deliberation Result</span>
+                  <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] bg-red-600 text-white uppercase font-bold">
+                    Disapproved
+                  </span>
+                  <span className="font-mono text-[11px] text-red-600 font-semibold">{protocol.deliberationDate || 'Final'}</span>
+                </>
+              ) : protocol.statusType === 'revision' && !isRevisionSubmitted ? (
                 <>
                   <div className="w-9 h-9 rounded-full bg-red-100 text-red-700 flex items-center justify-center shadow-xs ring-4 ring-red-100/50 animate-bounce">
                     <span className="material-symbols-outlined text-[20px] text-red-600 font-bold">priority_high</span>
@@ -572,17 +589,17 @@ export default function ApplicationTracking() {
 
             {/* Step 5 */}
             <div className={`flex flex-col items-center text-center relative z-10 w-36 ${protocol.activeStep === 5 ? '' : 'opacity-60'}`}>
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center ring-4 ring-white font-mono font-semibold ${protocol.activeStep === 5 ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-500'}`}>
-                {protocol.activeStep === 5 ? <span className="material-symbols-outlined text-[18px]">verified</span> : '5'}
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center ring-4 ring-white font-mono font-semibold ${protocol.statusType === 'disapproved' ? 'bg-red-50 text-red-500 border border-red-200' : protocol.activeStep === 5 ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-500'}`}>
+                {protocol.statusType === 'disapproved' ? <span className="material-symbols-outlined text-[18px]">block</span> : protocol.activeStep === 5 ? <span className="material-symbols-outlined text-[18px]">verified</span> : '5'}
               </div>
-              <span className={`text-xs mt-2 leading-tight font-semibold ${protocol.activeStep === 5 ? 'text-emerald-800' : 'text-slate-600'}`}>
-                5. Ethics Clearance
+              <span className={`text-xs mt-2 leading-tight font-semibold ${protocol.statusType === 'disapproved' ? 'text-red-700' : protocol.activeStep === 5 ? 'text-emerald-800' : 'text-slate-600'}`}>
+                {protocol.statusType === 'disapproved' ? 'Clearance Denied' : '5. Ethics Clearance'}
               </span>
               <span className="text-[12px] text-slate-500 mt-0.5">
-                {protocol.activeStep === 5 ? 'Certificate Ready' : 'Upcoming'}
+                {protocol.statusType === 'disapproved' ? 'Non-Compliant' : protocol.activeStep === 5 ? 'Certificate Ready' : 'Upcoming'}
               </span>
               <span className="font-mono text-[11px] text-slate-400">
-                {protocol.activeStep === 5 ? 'Claim at Office' : 'Final Issuance'}
+                {protocol.statusType === 'disapproved' ? 'Archived' : protocol.activeStep === 5 ? 'Claim at Office' : 'Final Issuance'}
               </span>
             </div>
           </div>
@@ -590,6 +607,77 @@ export default function ApplicationTracking() {
       </div>
 
       {/* 5. Status Specific Callout Blocks */}
+
+      {/* Disapproved Block */}
+      {protocol.statusType === 'disapproved' && (
+        <div className="bg-white border-2 border-red-300 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-red-100">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[18px]">gpp_bad</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Protocol Evaluation Disposition: Disapproved
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Ethics Clearance Denied by URERB Committee
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-red-50 text-red-700 font-medium text-xs border border-red-200">
+              <span className="material-symbols-outlined text-[16px]">event_busy</span>
+              <span>Decision Date: <strong className="font-bold">{protocol.deliberationDate || protocol.lastUpdateDate || 'Completed'}</strong></span>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col gap-2">
+            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-red-700">campaign</span>
+              <span>Review Panel Disposition &amp; Ethical Justification:</span>
+            </div>
+            <blockquote className="text-xs sm:text-sm text-slate-800 font-medium italic border-l-4 border-red-600 pl-3 py-1.5 bg-white rounded-r-lg">
+              {protocol.remarks || 'This research protocol has been evaluated and does not satisfy the ethical requirements stipulated under the Philippine Health Research Ethics Board (PHREB) National Ethical Guidelines.'}
+            </blockquote>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Research activities involving human participants or protected communities may not proceed under this protocol.
+            </p>
+          </div>
+
+          {/* List of Specific Non-Compliant / Deficient Forms */}
+          {deficientDocsList.length > 0 && (
+            <div className="space-y-2 mt-1">
+              <span className="text-xs font-bold text-red-950 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-red-600">warning</span>
+                Non-Compliant Forms Flagged by Reviewer ({deficientDocsList.length}):
+              </span>
+              <div className="grid grid-cols-1 gap-2">
+                {deficientDocsList.map((d) => (
+                  <div
+                    key={d.id}
+                    className="p-3 rounded-lg bg-red-50/70 border border-red-200 text-xs"
+                  >
+                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[15px] text-red-600">description</span>
+                      <span className="truncate">{d.title}</span>
+                    </div>
+                    <p className="text-[11px] text-red-800 mt-1 pl-5 leading-snug">
+                      <strong>Deficiency / Reason:</strong> {d.issueText || 'Failed compliance criteria.'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
+            <div className="font-semibold text-slate-800">What are my next steps?</div>
+            <p className="text-[11px] leading-relaxed">
+              If you wish to submit an appeal or file a substantially revised study protocol, please consult the URERB Secretariat Office or review the National Ethical Guidelines for Health and Health-Related Research.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Revision Required Block */}
       {protocol.statusType === 'revision' && !isRevisionSubmitted && (
